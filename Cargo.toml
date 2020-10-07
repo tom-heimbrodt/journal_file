@@ -1,5 +1,5 @@
 [package]
-name = "io"
+name = "journal_file"
 version = "0.1.0"
 authors = ["Tom Heimbrodt <heimbrodt@posteo.de>"]
 edition = "2018"

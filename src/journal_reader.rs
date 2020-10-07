@@ -5,35 +5,33 @@ use std::fmt::Debug;
 
 use crate::*;
 
+/// You can implement JournalDeserialize yourself to use a custom
+/// data format.
 pub trait JournalDeserialize<T> : Copy + 'static {
+    /// The error that is returned when deserialization fails.
     type Error: std::error::Error;
+    /// Deserialize the data from an `Read`.
     fn deserialize(&self, reader: &mut dyn Read) -> Result<Option<T>, Self::Error>;
 }
 
-//impl<T, X, Y> JournalDeserialize<T> for Y
-//where X: JournalDeserialize<T>,
-//      Y: Deref<Target=X> + Copy {
-//    type Error = X::Error;
-//
-//    fn deserialize(&self, reader: &mut dyn Read) -> Result<Option<T>, Self::Error> {
-//        (**self).deserialize(reader)
-//    }
-//}
-
-//pub trait JournalRead<'a, T, D> : IntoIterator<Item=Result<JournalEntry<T>, JournalError<D::Error>>>
-//where D: JournalDeserialize<T> {
-//    type IntoIter: Iterator<Item=Result<JournalEntry<T>, JournalError<D::Error>>>;
-//    fn iter(&'a mut self) -> <Self as JournalRead<'a, T, D>>::IntoIter;
-//}
-
+/// This struct provides sequential reads from journal files.
+/// 
+/// If you only want to use the default file format, check out [`SimpleJournalReader`](../type.SimpleJournalReader.html).
+/// 
+/// This struct will wrap a [`File`](std::fs::File) or a [`&mut File`](std::fs::File).
 #[derive(Debug)]
 pub struct JournalReader<'a, T, D> {
+    /// The underlying file handle
     file_handle: Option<OwnedOrRef<'a, File>>,
+    /// The deserializer that is used to deserialize entries
     deserializer: D,
+    /// Phantom data to let this struct compile with type parameter T
     type_phantom: PhantomData<*const T>,
+    /// Seek to position 0 on iteration start?
     seek: bool,
 } 
 
+/// This is the default implementation for [`JournalDeserialize`](JournalDeserialize).
 #[derive(Debug, Clone, Copy)]
 pub struct BincodeDeserializer;
 
@@ -66,6 +64,7 @@ where T: for<'de> serde::Deserialize<'de> {
 
 impl<'a, T> JournalReader<'a, T, BincodeDeserializer>
 where T: for<'de> serde::Deserialize<'de> + Debug {
+    /// Create a new [`JournalReader`](JournalReader) with the default deserializer.
     pub fn new<FILE>(file_handle: FILE) -> Self
     where FILE: Into<OwnedOrRef<'a, File>> + 'a {
         Self::with_deserializer(file_handle, BincodeDeserializer)
@@ -74,6 +73,7 @@ where T: for<'de> serde::Deserialize<'de> + Debug {
 
 impl<'a, T, D> JournalReader<'a, T, D>
 where D: JournalDeserialize<T> + Debug, T: Debug {
+    /// Like [`new`](JournalReader::new), but you can provide your own deserializer.
     pub fn with_deserializer<FILE>(file_handle: FILE, deserializer: D) -> Self
     where FILE: Into<OwnedOrRef<'a, File>> + 'a {
         Self {
@@ -84,14 +84,22 @@ where D: JournalDeserialize<T> + Debug, T: Debug {
         }
     }
 
+    /// Configure if you want the reader to seek to the beginning of the file
+    /// on every new iteration.
+    /// 
+    /// If this is set to false, every new call to [`iter`](JournalReader::iter) and
+    /// [`into_iter`](JournalReader::into_iter) will start at the position the last
+    /// iterator was dropped at.
     pub fn seek_on_iter_start(&mut self, seek: bool) {
         self.seek = seek;
     }
 
+    /// Iterate over the journals entries
     pub fn iter<'outer>(&'outer mut self) -> JournalReaderIterUnwrapped<'a, 'outer, T, D> {
         self.into_iter()
     }
 
+    /// Same as [`iter`](JournalReader::iter) but also contains byte offsets.
     pub(crate) fn iter_entries<'outer>(&'outer mut self) -> JournalReaderIter<'a, 'outer, T, D> {
         JournalReaderIter {
             seek: self.seek,
@@ -100,12 +108,18 @@ where D: JournalDeserialize<T> + Debug, T: Debug {
         }
     }
 
+    /// Turn this reader into an Iterator.
     pub fn into_iter<'outer>(self) -> JournalReaderIterUnwrapped<'a, 'outer, T, D> {
         JournalReaderIterUnwrapped(JournalReaderIter {
             seek: self.seek,
             reader: OwnedOrRef::Owned(self),
             buf_reader: None,
         })
+    }
+
+    /// Unwrap this struct and return the stored file handle.
+    pub fn into_inner(self) -> OwnedOrRef<'a, File> {
+        self.file_handle.unwrap()
     }
 }
 
@@ -214,30 +228,3 @@ where D: JournalDeserialize<T> + Debug, T: Debug {
         })
     }
 }
-
-//impl<T, D> IntoIterator for JournalReader<'static, T, D>
-//where D: JournalDeserialize<T> + Debug + 'static,
-//      T: Debug + 'static {
-//
-//    type Item = <JournalReaderIter<'static, 'static, T, D> as Iterator>::Item;
-//
-//    type IntoIter = JournalReaderIter<'static, 'static, T, D>;
-//
-//    fn into_iter(self) -> JournalReaderIter<'static, 'static, T, D> {
-//        JournalReaderIter {
-//            seek: self.seek,
-//            reader: OwnedOrRef::Owned(self),
-//            buf_reader: None,
-//        }
-//    }
-//}
-
-//impl<'a, T, D> JournalRead<'a, T, D> for JournalReader<'a, T, D>
-//where D: JournalDeserialize<T> + Debug + 'a,
-//      T: Debug + 'a {
-//    type IntoIter = JournalReaderIter<'a, 'static, T, D>;
-//
-//    fn iter(&'a mut self) -> <Self as JournalRead<'a, T, D>>::IntoIter {
-//        IntoIterator::into_iter(self)
-//    }
-//}

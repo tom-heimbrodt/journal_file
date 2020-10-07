@@ -1,8 +1,9 @@
 use std::fs::File;
 use std::path::Path;
-use io::*;
+use journal_file::*;
 
 fn main() {
+    // Open a file handle used for reading and writing
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -16,18 +17,28 @@ fn main() {
 }
 
 pub fn write(file: &mut File) {
-    let mut writer: SimpleJournalWriter<String> = SimpleJournalWriter::new(file);
+    // Create journal file and store some entries,
+    // see examples/01_simple.rs
+    let mut writer: SimpleJournalWriter<String> =
+        SimpleJournalWriter::new(file);
+
     writer.store_entry("Hello World!".into()).unwrap();
     writer.store_entry("Another Entry".into()).unwrap();
     writer.store_entry("Even more data".into()).unwrap();
-    for i in 4..100 {
-        writer.store_entry(format!("This is entry no {}.", i)).unwrap();
-    }
+    writer.store_entries(
+            (4..100)
+            .into_iter()
+            .map(|x|
+                format!("This is entry no {}", x)))
+        .unwrap();
 }
 
 pub fn read(file: &mut File) {
-    let mut reader: SimpleIndexedJournal<String> = SimpleIndexedJournal::new(file)
-        .unwrap(); // creating an IndexedJournal will scan the whole file which might fail, thus it returns a Result
+    let mut reader: SimpleIndexedJournal<String> =
+        SimpleIndexedJournal::new(file)
+        // Creating an IndexedJournal will scan the whole file which might fail,
+        // thus it returns a Result
+        .unwrap(); 
 
     // You can use IndexedJournal just like JournalReader ...
     for value in &mut reader {
